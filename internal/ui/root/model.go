@@ -53,16 +53,16 @@ func NewModel(cfg *config.Config, app *tview.Application) *Model {
 	return m
 }
 
-func (m *Model) showLogin() tview.Command {
+func (m *Model) showLogin() tview.Cmd {
 	m.inner = login.NewModel(m.cfg)
 	m.buildLayout()
-	return tview.Batch(m.inner.HandleEvent(&tview.InitEvent{}), tview.SetFocus(m))
+	return tview.Batch(m.inner.Update(&tview.InitEvent{}), tview.SetFocus(m))
 }
 
-func (m *Model) showChat(token string) tview.Command {
+func (m *Model) showChat(token string) tview.Cmd {
 	m.inner = chat.NewModel(m.app, m.cfg, token)
 	m.buildLayout()
-	return tview.Batch(m.inner.HandleEvent(&tview.InitEvent{}), tview.SetFocus(m))
+	return tview.Batch(m.inner.Update(&tview.InitEvent{}), tview.SetFocus(m))
 }
 
 func (m *Model) buildLayout() {
@@ -80,10 +80,10 @@ func (m *Model) Draw(screen tcell.Screen) {
 	m.rootFlex.Draw(screen)
 }
 
-func (m *Model) HandleEvent(event tview.Event) tview.Command {
+func (m *Model) Update(event tview.Event) tview.Cmd {
 	switch event := event.(type) {
 	case *tview.InitEvent:
-		var cmd tview.Command
+		var cmd tview.Cmd
 		if token := os.Getenv(tokenEnvVarKey); token != "" {
 			cmd = tokenCommand(token)
 		} else {
@@ -121,16 +121,16 @@ func (m *Model) HandleEvent(event tview.Event) tview.Command {
 			m.suspend()
 			return nil
 		case keybind.Matches(event, m.cfg.Keybinds.Quit.Keybind):
-			var innerCmd tview.Command
+			var innerCmd tview.Cmd
 			if m.inner != nil {
-				innerCmd = m.inner.HandleEvent(&chat.QuitEvent{})
+				innerCmd = m.inner.Update(&chat.QuitEvent{})
 			}
 			return tview.Batch(innerCmd, tview.Quit())
 		}
 	}
 
 	if m.inner != nil {
-		return m.inner.HandleEvent(event)
+		return m.inner.Update(event)
 	}
 	return nil
 }

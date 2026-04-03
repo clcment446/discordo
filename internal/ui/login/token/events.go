@@ -10,7 +10,7 @@ type TokenEvent struct {
 	Token string
 }
 
-func tokenCommand(token string) tview.Command {
+func tokenCommand(token string) tview.Cmd {
 	return func() tview.Event {
 		return &TokenEvent{Token: token}
 	}

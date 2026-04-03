@@ -41,7 +41,7 @@ func NewModel(cfg *config.Config) *Model {
 	}
 }
 
-func (m *Model) HandleEvent(event tview.Event) tview.Command {
+func (m *Model) Update(event tview.Event) tview.Cmd {
 	switch event := event.(type) {
 	case *tcell.EventError:
 		if m.HasLayer(errorLayerName) {
@@ -59,10 +59,10 @@ func (m *Model) HandleEvent(event tview.Event) tview.Command {
 		m.errorModalText = ""
 		return nil
 	}
-	return m.Layers.HandleEvent(event)
+	return m.Layers.Update(event)
 }
 
-func (m *Model) showErrorDialog(err error) tview.Command {
+func (m *Model) showErrorDialog(err error) tview.Cmd {
 	slog.Error("failed to login", "err", err)
 
 	message := err.Error()

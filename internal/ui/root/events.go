@@ -14,7 +14,7 @@ type tokenEvent struct {
 	token string
 }
 
-func tokenCommand(token string) tview.Command {
+func tokenCommand(token string) tview.Cmd {
 	return func() tview.Event {
 		return &tokenEvent{token: token}
 	}
@@ -22,7 +22,7 @@ func tokenCommand(token string) tview.Command {
 
 type loginEvent struct{ tcell.EventTime }
 
-func getToken() tview.Command {
+func getToken() tview.Cmd {
 	return func() tview.Event {
 		token, err := keyring.GetToken()
 		if err != nil {
@@ -33,7 +33,7 @@ func getToken() tview.Command {
 	}
 }
 
-func setToken(token string) tview.Command {
+func setToken(token string) tview.Cmd {
 	return func() tview.Event {
 		if err := keyring.SetToken(token); err != nil {
 			slog.Error("failed to set token to keyring", "err", err)
@@ -43,7 +43,7 @@ func setToken(token string) tview.Command {
 	}
 }
 
-func deleteToken() tview.Command {
+func deleteToken() tview.Cmd {
 	return func() tview.Event {
 		if err := keyring.DeleteToken(); err != nil {
 			slog.Error("failed to delete token from keyring", "err", err)
@@ -53,7 +53,7 @@ func deleteToken() tview.Command {
 	}
 }
 
-func initClipboard() tview.Command {
+func initClipboard() tview.Cmd {
 	return func() tview.Event {
 		if err := clipboard.Init(); err != nil {
 			slog.Error("failed to init clipboard", "err", err)

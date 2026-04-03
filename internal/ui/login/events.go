@@ -8,7 +8,7 @@ import (
 	"github.com/gdamore/tcell/v3"
 )
 
-func setClipboard(content string) tview.Command {
+func setClipboard(content string) tview.Cmd {
 	return func() tview.Event {
 		if err := clipboard.Write(clipboard.FmtText, []byte(content)); err != nil {
 			slog.Error("failed to copy error message", "err", err)

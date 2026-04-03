@@ -844,7 +844,7 @@ func (ml *messagesList) selectedMessage() (*discord.Message, error) {
 	return &ml.messages[cursor], nil
 }
 
-func (ml *messagesList) HandleEvent(event tview.Event) tview.Command {
+func (ml *messagesList) Update(event tview.Event) tview.Cmd {
 	switch event := event.(type) {
 	case *tview.KeyEvent:
 		switch {
@@ -889,7 +889,7 @@ func (ml *messagesList) HandleEvent(event tview.Event) tview.Command {
 			ml.confirmDelete()
 			return nil
 		}
-		return ml.Model.HandleEvent(event)
+		return ml.Model.Update(event)
 
 	case *olderMessagesLoadedEvent:
 		selectedChannel := ml.chatView.SelectedChannel()
@@ -917,10 +917,10 @@ func (ml *messagesList) HandleEvent(event tview.Event) tview.Command {
 		}
 		return nil
 	}
-	return ml.Model.HandleEvent(event)
+	return ml.Model.Update(event)
 }
 
-func (ml *messagesList) selectUp() tview.Command {
+func (ml *messagesList) selectUp() tview.Cmd {
 	messages := ml.messages
 	if len(messages) == 0 {
 		return nil
@@ -992,7 +992,7 @@ func (ml *messagesList) selectReply() {
 	}
 }
 
-func (ml *messagesList) fetchOlderMessages() tview.Command {
+func (ml *messagesList) fetchOlderMessages() tview.Cmd {
 	selectedChannel := ml.chatView.SelectedChannel()
 	if selectedChannel == nil {
 		return nil
@@ -1021,7 +1021,7 @@ func (ml *messagesList) fetchOlderMessages() tview.Command {
 	}
 }
 
-func (ml *messagesList) yankMessageID() tview.Command {
+func (ml *messagesList) yankMessageID() tview.Cmd {
 	msg, err := ml.selectedMessage()
 	if err != nil {
 		slog.Error("failed to get selected message", "err", err)
@@ -1036,7 +1036,7 @@ func (ml *messagesList) yankMessageID() tview.Command {
 	}
 }
 
-func (ml *messagesList) yankContent() tview.Command {
+func (ml *messagesList) yankContent() tview.Cmd {
 	msg, err := ml.selectedMessage()
 	if err != nil {
 		slog.Error("failed to get selected message", "err", err)
@@ -1051,7 +1051,7 @@ func (ml *messagesList) yankContent() tview.Command {
 	}
 }
 
-func (ml *messagesList) yankURL() tview.Command {
+func (ml *messagesList) yankURL() tview.Cmd {
 	msg, err := ml.selectedMessage()
 	if err != nil {
 		slog.Error("failed to get selected message", "err", err)
@@ -1279,8 +1279,8 @@ func (ml *messagesList) editSelectedMessage() {
 func (ml *messagesList) confirmDelete() {
 	onChoice := func(choice string) {
 		if choice == "Yes" {
-			if command := ml.deleteSelectedMessage(); command != nil {
-				command()
+			if cmd := ml.deleteSelectedMessage(); cmd != nil {
+				cmd()
 			}
 		}
 	}
@@ -1292,7 +1292,7 @@ func (ml *messagesList) confirmDelete() {
 	)
 }
 
-func (ml *messagesList) deleteSelectedMessage() tview.Command {
+func (ml *messagesList) deleteSelectedMessage() tview.Cmd {
 	selectedMessage, err := ml.selectedMessage()
 	if err != nil {
 		slog.Error("failed to get selected message", "err", err)

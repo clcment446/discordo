@@ -103,8 +103,8 @@ func (mi *messageInput) stopTypingTimer() {
 	}
 }
 
-func (mi *messageInput) HandleEvent(event tview.Event) tview.Command {
-	handler := mi.TextArea.HandleEvent
+func (mi *messageInput) Update(event tview.Event) tview.Cmd {
+	handler := mi.TextArea.Update
 	switch event := event.(type) {
 	case *tview.KeyEvent:
 		switch {
@@ -119,8 +119,8 @@ func (mi *messageInput) HandleEvent(event tview.Event) tview.Command {
 			}
 			return nil
 		case keybind.Matches(event, mi.cfg.Keybinds.MessageInput.OpenEditor.Keybind):
-			var cmds []tview.Command
-			mi.stopTabCompletion(func(next tview.Command) {
+			var cmds []tview.Cmd
+			mi.stopTabCompletion(func(next tview.Cmd) {
 				if next != nil {
 					cmds = append(cmds, next)
 				}
@@ -128,8 +128,8 @@ func (mi *messageInput) HandleEvent(event tview.Event) tview.Command {
 			mi.editor()
 			return tview.Batch(cmds...)
 		case keybind.Matches(event, mi.cfg.Keybinds.MessageInput.OpenFilePicker.Keybind):
-			var cmds []tview.Command
-			mi.stopTabCompletion(func(next tview.Command) {
+			var cmds []tview.Cmd
+			mi.stopTabCompletion(func(next tview.Cmd) {
 				if next != nil {
 					cmds = append(cmds, next)
 				}
@@ -137,9 +137,9 @@ func (mi *messageInput) HandleEvent(event tview.Event) tview.Command {
 			mi.openFilePicker()
 			return tview.Batch(cmds...)
 		case keybind.Matches(event, mi.cfg.Keybinds.MessageInput.Cancel.Keybind):
-			var cmds []tview.Command
+			var cmds []tview.Cmd
 			if mi.chat.GetVisible(mentionsListLayerName) {
-				mi.stopTabCompletion(func(next tview.Command) {
+				mi.stopTabCompletion(func(next tview.Cmd) {
 					if next != nil {
 						cmds = append(cmds, next)
 					}
@@ -174,7 +174,7 @@ func (mi *messageInput) HandleEvent(event tview.Event) tview.Command {
 					keybind.Matches(event, keybinds.Down.Keybind) ||
 					keybind.Matches(event, keybinds.Top.Keybind) ||
 					keybind.Matches(event, keybinds.Bottom.Keybind) {
-					return mi.mentionsList.HandleEvent(event)
+					return mi.mentionsList.Update(event)
 				}
 			}
 
@@ -619,7 +619,7 @@ func (mi *messageInput) removeMentionsList() {
 	}
 }
 
-func (mi *messageInput) stopTabCompletion(emit func(tview.Command)) {
+func (mi *messageInput) stopTabCompletion(emit func(tview.Cmd)) {
 	if mi.cfg.AutocompleteLimit > 0 {
 		mi.mentionsList.clear()
 		if emit != nil {

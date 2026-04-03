@@ -22,7 +22,7 @@ func (m *Model) Label() string {
 	return "Token"
 }
 
-func (m *Model) HandleEvent(event tview.Event) tview.Command {
+func (m *Model) Update(event tview.Event) tview.Cmd {
 	switch event.(type) {
 	case *tview.FormSubmitEvent:
 		token := m.GetFormItem(0).(*tview.InputField).GetText()
@@ -31,5 +31,5 @@ func (m *Model) HandleEvent(event tview.Event) tview.Command {
 		}
 		return tokenCommand(token)
 	}
-	return m.Form.HandleEvent(event)
+	return m.Form.Update(event)
 }

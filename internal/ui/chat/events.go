@@ -10,7 +10,7 @@ import (
 	"github.com/gdamore/tcell/v3"
 )
 
-func (m *Model) openState() tview.Command {
+func (m *Model) openState() tview.Cmd {
 	return func() tview.Event {
 		if err := m.state.Open(context.Background()); err != nil {
 			slog.Error("failed to open chat state", "err", err)
@@ -20,7 +20,7 @@ func (m *Model) openState() tview.Command {
 	}
 }
 
-func (m *Model) closeState() tview.Command {
+func (m *Model) closeState() tview.Cmd {
 	return func() tview.Event {
 		if m.state != nil {
 			if err := m.state.Close(); err != nil {
@@ -37,7 +37,7 @@ type gatewayEvent struct {
 	gateway.Event
 }
 
-func (m *Model) listen() tview.Command {
+func (m *Model) listen() tview.Cmd {
 	return func() tview.Event {
 		return &gatewayEvent{Event: <-m.events}
 	}
@@ -65,7 +65,7 @@ func newOlderMessagesLoadedEvent(channelID discord.ChannelID, older []discord.Me
 
 type LogoutEvent struct{ tcell.EventTime }
 
-func (m *Model) logout() tview.Command {
+func (m *Model) logout() tview.Cmd {
 	return func() tview.Event {
 		return &LogoutEvent{}
 	}
@@ -78,7 +78,7 @@ type closeLayerEvent struct {
 	name string
 }
 
-func closeLayer(name string) tview.Command {
+func closeLayer(name string) tview.Cmd {
 	return func() tview.Event {
 		return &closeLayerEvent{name: name}
 	}

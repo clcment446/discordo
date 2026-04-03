@@ -26,7 +26,7 @@ func newChannelsPicker(cfg *config.Config, chatView *Model) *channelsPicker {
 	return cp
 }
 
-func (cp *channelsPicker) HandleEvent(event tview.Event) tview.Command {
+func (cp *channelsPicker) Update(event tview.Event) tview.Cmd {
 	switch event := event.(type) {
 	case *picker.SelectedEvent:
 		channelID, ok := event.Reference.(discord.ChannelID)
@@ -48,7 +48,7 @@ func (cp *channelsPicker) HandleEvent(event tview.Event) tview.Command {
 
 		cp.chatView.guildsTree.expandPathToNode(node)
 		cp.chatView.guildsTree.SetCurrentNode(node)
-		var selectCmd tview.Command
+		var selectCmd tview.Cmd
 		if channel.Type != discord.GuildCategory {
 			selectCmd = cp.chatView.guildsTree.onSelected(node)
 		}
@@ -58,7 +58,7 @@ func (cp *channelsPicker) HandleEvent(event tview.Event) tview.Command {
 		cp.chatView.closePicker()
 		return nil
 	}
-	return cp.Model.HandleEvent(event)
+	return cp.Model.Update(event)
 }
 
 func (cp *channelsPicker) update() {

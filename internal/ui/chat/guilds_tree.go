@@ -299,7 +299,7 @@ func (gt *guildsTree) createChannelNodes(node *tview.TreeNode, channels []discor
 	}
 }
 
-func (gt *guildsTree) onSelected(node *tview.TreeNode) tview.Command {
+func (gt *guildsTree) onSelected(node *tview.TreeNode) tview.Cmd {
 	if len(node.GetChildren()) != 0 {
 		node.SetExpanded(!node.IsExpanded())
 		return nil
@@ -371,7 +371,7 @@ func (gt *guildsTree) onSelected(node *tview.TreeNode) tview.Command {
 	return nil
 }
 
-func (gt *guildsTree) loadChannel(channel discord.Channel) tview.Command {
+func (gt *guildsTree) loadChannel(channel discord.Channel) tview.Cmd {
 	limit := uint(gt.cfg.MessagesLimit)
 	return func() tview.Event {
 		messages, err := gt.chat.state.Messages(channel.ID, limit)
@@ -404,12 +404,12 @@ func (gt *guildsTree) collapseParentNode(node *tview.TreeNode) {
 		})
 }
 
-func (gt *guildsTree) HandleEvent(event tview.Event) tview.Command {
+func (gt *guildsTree) Update(event tview.Event) tview.Cmd {
 	switch event := event.(type) {
 	case *tview.TreeViewSelectedEvent:
 		return gt.onSelected(event.Node)
 	case *tview.KeyEvent:
-		handler := gt.TreeView.HandleEvent
+		handler := gt.TreeView.Update
 
 		switch {
 		case keybind.Matches(event, gt.cfg.Keybinds.GuildsTree.CollapseParentNode.Keybind):
@@ -435,10 +435,10 @@ func (gt *guildsTree) HandleEvent(event tview.Event) tview.Command {
 		// Do not fall through to TreeView defaults for unmatched keys.
 		return nil
 	}
-	return gt.TreeView.HandleEvent(event)
+	return gt.TreeView.Update(event)
 }
 
-func (gt *guildsTree) yankID() tview.Command {
+func (gt *guildsTree) yankID() tview.Cmd {
 	node := gt.GetCurrentNode()
 	if node == nil {
 		return nil

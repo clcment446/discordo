@@ -166,10 +166,10 @@ func (m *Model) openPicker() {
 
 func (m *Model) closePicker() {
 	m.RemoveLayer(channelsPickerLayerName)
-	m.channelsPicker.Update()
+	m.channelsPicker.Refresh()
 }
 
-func (m *Model) toggleGuildsTree() tview.Command {
+func (m *Model) toggleGuildsTree() tview.Cmd {
 	// The guilds tree is visible if the number of items is two.
 	if m.mainFlex.GetItemCount() == 2 {
 		m.mainFlex.RemoveItem(m.guildsTree)
@@ -183,7 +183,7 @@ func (m *Model) toggleGuildsTree() tview.Command {
 	return nil
 }
 
-func (m *Model) focusGuildsTree() tview.Command {
+func (m *Model) focusGuildsTree() tview.Cmd {
 	// The guilds tree is not hidden if the number of items is two.
 	if m.mainFlex.GetItemCount() == 2 {
 		return tview.SetFocus(m.guildsTree)
@@ -191,18 +191,18 @@ func (m *Model) focusGuildsTree() tview.Command {
 	return nil
 }
 
-func (m *Model) focusMessageInput() tview.Command {
+func (m *Model) focusMessageInput() tview.Cmd {
 	if !m.messageInput.GetDisabled() {
 		return tview.SetFocus(m.messageInput)
 	}
 	return nil
 }
 
-func (m *Model) focusMessagesList() tview.Command {
+func (m *Model) focusMessagesList() tview.Cmd {
 	return tview.SetFocus(m.messagesList)
 }
 
-func (m *Model) focusPrevious() tview.Command {
+func (m *Model) focusPrevious() tview.Cmd {
 	switch m.app.Focused() {
 	case m.guildsTree:
 		if cmd := m.focusMessageInput(); cmd != nil {
@@ -224,7 +224,7 @@ func (m *Model) focusPrevious() tview.Command {
 	return nil
 }
 
-func (m *Model) focusNext() tview.Command {
+func (m *Model) focusNext() tview.Cmd {
 	switch m.app.Focused() {
 	case m.guildsTree:
 		return m.focusMessagesList()
@@ -245,7 +245,7 @@ func (m *Model) focusNext() tview.Command {
 	return nil
 }
 
-func (m *Model) HandleEvent(event tview.Event) tview.Command {
+func (m *Model) Update(event tview.Event) tview.Cmd {
 	switch event := event.(type) {
 	case *tview.InitEvent:
 		return tview.Batch(m.openState(), m.listen())
@@ -301,14 +301,14 @@ func (m *Model) HandleEvent(event tview.Event) tview.Command {
 		m.messageInput.SetDisabled(hasNoPerm)
 		text := "Message..."
 
-		var focusCommand tview.Command
+		var focusCmd tview.Cmd
 		if hasNoPerm {
 			text = "You do not have permission to send messages in this channel."
 		} else if m.cfg.AutoFocus {
-			focusCommand = m.focusMessageInput()
+			focusCmd = m.focusMessageInput()
 		}
 		m.messageInput.SetPlaceholder(tview.NewLine(tview.NewSegment(text, tcell.StyleDefault.Dim(true))))
-		return focusCommand
+		return focusCmd
 	case *QuitEvent:
 		return tview.Batch(
 			m.closeState(),
@@ -317,7 +317,7 @@ func (m *Model) HandleEvent(event tview.Event) tview.Command {
 	case *tview.ModalDoneEvent:
 		if m.HasLayer(confirmModalLayerName) {
 			m.RemoveLayer(confirmModalLayerName)
-			var focusCmd tview.Command
+			var focusCmd tview.Cmd
 			if m.confirmModalPreviousFocus != nil {
 				focusCmd = tview.SetFocus(m.confirmModalPreviousFocus)
 			}
@@ -360,7 +360,7 @@ func (m *Model) HandleEvent(event tview.Event) tview.Command {
 		}
 		return nil
 	}
-	return m.Layers.HandleEvent(event)
+	return m.Layers.Update(event)
 }
 
 func (m *Model) showConfirmModal(prompt string, buttons []string, onDone func(label string)) {

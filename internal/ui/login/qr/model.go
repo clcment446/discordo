@@ -44,7 +44,7 @@ func (m *Model) Label() string {
 	return "QR"
 }
 
-func (m *Model) HandleEvent(event tview.Event) tview.Command {
+func (m *Model) Update(event tview.Event) tview.Cmd {
 	switch event := event.(type) {
 	case *tview.InitEvent:
 		m.msg = "Connecting to Remote Auth Gateway..."
@@ -54,7 +54,7 @@ func (m *Model) HandleEvent(event tview.Event) tview.Command {
 			m.msg = "Canceled"
 			return tview.Batch(m.close(), nil)
 		}
-		return m.TextView.HandleEvent(event)
+		return m.TextView.Update(event)
 
 	case *connCreateEvent:
 		m.conn = event.conn
@@ -103,7 +103,7 @@ func (m *Model) HandleEvent(event tview.Event) tview.Command {
 
 	case *tcell.EventError:
 		m.msg = event.Error()
-		return tview.Batch(m.close(), tview.Command(func() tview.Event { return event }))
+		return tview.Batch(m.close(), tview.Cmd(func() tview.Event { return event }))
 	}
 
 	return nil
