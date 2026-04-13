@@ -63,8 +63,7 @@ func Run() error {
 	screen.EnableFocus()
 
 	tview.Styles = tview.Theme{}
-	app := tview.NewApplication()
+	app := tview.NewApplication(tview.WithScreen(screen))
 	app.SetRoot(root.NewModel(cfg, app))
-	app.SetScreen(screen)
 	return app.Run()
 }
