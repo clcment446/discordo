@@ -3,6 +3,10 @@ package chat
 import (
 	"context"
 	"errors"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,6 +26,7 @@ import (
 	"github.com/ayn2op/discordo/internal/consts"
 	"github.com/ayn2op/discordo/internal/markdown"
 	"github.com/ayn2op/discordo/internal/ui"
+	"github.com/ayn2op/discordo/internal/ui/imageview"
 	"github.com/ayn2op/tview"
 	"github.com/ayn2op/tview/help"
 	"github.com/ayn2op/tview/keybind"
@@ -54,6 +59,9 @@ type messagesList struct {
 	renderer *markdown.Renderer
 	// itemByID caches unselected message TextViews.
 	itemByID map[discord.MessageID]*tview.TextView
+	// imagePreviewByID caches rendered inline image previews per message.
+	imagePreviewByID  map[discord.MessageID][]tview.Line
+	imagePreviewTried map[discord.MessageID]bool
 
 	attachmentsPicker *attachmentsPicker
 
@@ -80,13 +88,22 @@ type messagesListRow struct {
 	timestamp    discord.Timestamp
 }
 
+const (
+	inlinePreviewWidth    = 48
+	inlinePreviewHeight   = 14
+	inlinePreviewMaxBytes = 8 << 20
+	inlinePreviewTimeout  = 3 * time.Second
+)
+
 func newMessagesList(cfg *config.Config, chat *Model) *messagesList {
 	ml := &messagesList{
-		Model:    list.NewModel(),
-		cfg:      cfg,
-		chat:     chat,
-		renderer: markdown.NewRenderer(cfg),
-		itemByID: make(map[discord.MessageID]*tview.TextView),
+		Model:             list.NewModel(),
+		cfg:               cfg,
+		chat:              chat,
+		renderer:          markdown.NewRenderer(cfg),
+		itemByID:          make(map[discord.MessageID]*tview.TextView),
+		imagePreviewByID:  make(map[discord.MessageID][]tview.Line),
+		imagePreviewTried: make(map[discord.MessageID]bool),
 	}
 	ml.attachmentsPicker = newAttachmentsPicker(cfg, chat)
 
@@ -114,6 +131,8 @@ func (ml *messagesList) reset() {
 	ml.rows = nil
 	ml.rowsDirty = false
 	clear(ml.itemByID)
+	clear(ml.imagePreviewByID)
+	clear(ml.imagePreviewTried)
 	ml.
 		Clear().
 		SetBuilder(ml.buildItem).
@@ -136,6 +155,8 @@ func (ml *messagesList) setMessages(messages []discord.Message) {
 	// New channel payload / refetch: replace the cache wholesale to keep it in
 	// lockstep with the current message slice.
 	clear(ml.itemByID)
+	clear(ml.imagePreviewByID)
+	clear(ml.imagePreviewTried)
 }
 
 func (ml *messagesList) addMessage(message discord.Message) {
@@ -143,6 +164,8 @@ func (ml *messagesList) addMessage(message discord.Message) {
 	ml.invalidateRows()
 	// Defensive invalidation for ID reuse/edits delivered out-of-order.
 	delete(ml.itemByID, message.ID)
+	delete(ml.imagePreviewByID, message.ID)
+	delete(ml.imagePreviewTried, message.ID)
 }
 
 func (ml *messagesList) setMessage(index int, message discord.Message) {
@@ -152,6 +175,8 @@ func (ml *messagesList) setMessage(index int, message discord.Message) {
 
 	ml.messages[index] = message
 	delete(ml.itemByID, message.ID)
+	delete(ml.imagePreviewByID, message.ID)
+	delete(ml.imagePreviewTried, message.ID)
 	ml.invalidateRows()
 }
 
@@ -161,6 +186,8 @@ func (ml *messagesList) deleteMessage(index int) {
 	}
 
 	delete(ml.itemByID, ml.messages[index].ID)
+	delete(ml.imagePreviewByID, ml.messages[index].ID)
+	delete(ml.imagePreviewTried, ml.messages[index].ID)
 	ml.messages = append(ml.messages[:index], ml.messages[index+1:]...)
 	ml.invalidateRows()
 }
@@ -186,7 +213,7 @@ func (ml *messagesList) buildItem(index int, cursor int) list.Item {
 		return tview.NewTextView().
 			SetWrap(true).
 			SetWordWrap(true).
-			SetLines(ml.renderMessage(message, ml.cfg.Theme.MessagesList.SelectedMessageStyle.Style))
+			SetLines(ml.buildMessageLines(message, ml.cfg.Theme.MessagesList.SelectedMessageStyle.Style))
 	}
 
 	item, ok := ml.itemByID[message.ID]
@@ -194,10 +221,22 @@ func (ml *messagesList) buildItem(index int, cursor int) list.Item {
 		item = tview.NewTextView().
 			SetWrap(true).
 			SetWordWrap(true).
-			SetLines(ml.renderMessage(message, ml.cfg.Theme.MessagesList.MessageStyle.Style))
+			SetLines(ml.buildMessageLines(message, ml.cfg.Theme.MessagesList.MessageStyle.Style))
 		ml.itemByID[message.ID] = item
 	}
 	return item
+}
+
+func (ml *messagesList) buildMessageLines(message discord.Message, baseStyle tcell.Style) []tview.Line {
+	lines := ml.renderMessage(message, baseStyle)
+	preview := ml.inlineImagePreview(message)
+	if len(preview) == 0 {
+		return lines
+	}
+
+	lines = append(lines, tview.Line{})
+	lines = append(lines, preview...)
+	return lines
 }
 
 func (ml *messagesList) renderMessage(message discord.Message, baseStyle tcell.Style) []tview.Line {
@@ -897,6 +936,8 @@ func (ml *messagesList) Update(msg tview.Msg) tview.Cmd {
 		// Defensive invalidation if Discord returns overlapping windows.
 		for _, message := range msg.Older {
 			delete(ml.itemByID, message.ID)
+			delete(ml.imagePreviewByID, message.ID)
+			delete(ml.imagePreviewTried, message.ID)
 		}
 		ml.messages = slices.Concat(msg.Older, ml.messages)
 		ml.invalidateRows()
@@ -1149,6 +1190,111 @@ func messageURLs(msg discord.Message) []string {
 		urls = append(urls, u)
 	}
 	return urls
+}
+
+func messageImageURLs(msg discord.Message) []string {
+	combined := make([]string, 0, len(msg.Attachments)+len(msg.Embeds)*2)
+	for _, a := range msg.Attachments {
+		u := strings.TrimSpace(a.URL)
+		if u == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(a.ContentType), "image/") || isImageURL(u) {
+			combined = append(combined, u)
+		}
+	}
+	for _, embed := range msg.Embeds {
+		if embed.Image != nil && embed.Image.URL != "" {
+			combined = append(combined, string(embed.Image.URL))
+		}
+		if embed.Thumbnail != nil && embed.Thumbnail.URL != "" {
+			combined = append(combined, string(embed.Thumbnail.URL))
+		}
+	}
+
+	urls := make([]string, 0, len(combined))
+	seen := make(map[string]struct{}, len(combined))
+	for _, u := range combined {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		if _, ok := seen[u]; ok {
+			continue
+		}
+		seen[u] = struct{}{}
+		urls = append(urls, u)
+	}
+	return urls
+}
+
+func isImageURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	path := strings.ToLower(parsed.Path)
+	return strings.HasSuffix(path, ".png") || strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".jpeg") || strings.HasSuffix(path, ".gif")
+}
+
+func (ml *messagesList) inlineImagePreview(message discord.Message) []tview.Line {
+	if preview, ok := ml.imagePreviewByID[message.ID]; ok {
+		return preview
+	}
+	if ml.imagePreviewTried[message.ID] {
+		return nil
+	}
+	ml.imagePreviewTried[message.ID] = true
+
+	urls := messageImageURLs(message)
+	if len(urls) == 0 {
+		return nil
+	}
+
+	preview, err := ml.fetchInlineImagePreview(urls[0])
+	if err != nil {
+		slog.Debug("failed to build inline image preview", "message_id", message.ID, "url", urls[0], "err", err)
+		return nil
+	}
+	if len(preview) == 0 {
+		return nil
+	}
+
+	ml.imagePreviewByID[message.ID] = preview
+	return preview
+}
+
+func (ml *messagesList) fetchInlineImagePreview(rawURL string) ([]tview.Line, error) {
+	client := http.Client{Timeout: inlinePreviewTimeout}
+	resp, err := client.Get(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, errors.New("unexpected image preview status")
+	}
+
+	img, _, err := image.Decode(io.LimitReader(resp.Body, inlinePreviewMaxBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	width := inlinePreviewWidth
+	if _, _, innerWidth, _ := ml.InnerRect(); innerWidth > 0 {
+		width = min(width, innerWidth)
+	}
+	if width <= 0 {
+		return nil, nil
+	}
+
+	renderer := imageview.NewImage().
+		SetImage(img).
+		SetDithering(imageview.DitheringFloydSteinberg).
+		SetColors(imageview.TrueColor).
+		SetSize(inlinePreviewHeight, width)
+	return renderer.RenderLines(width, inlinePreviewHeight), nil
 }
 
 func (ml *messagesList) showAttachmentsList(urls []string, attachments []discord.Attachment) tview.Cmd {
