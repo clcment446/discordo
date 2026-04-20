@@ -5,8 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="33f804cc-e906-477b-b8c2-1a0057d25dbe" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/internal/ui/imageview/image.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/image.go" beforeDir="false" afterPath="$PROJECT_DIR$/image.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/internal/ui/chat/kitty.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/internal/ui/chat/messages_list.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/ui/chat/messages_list.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />

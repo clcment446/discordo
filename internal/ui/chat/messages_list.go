@@ -57,11 +57,13 @@ type messagesList struct {
 	rowsDirty bool
 
 	renderer *markdown.Renderer
-	// itemByID caches unselected message TextViews.
-	itemByID map[discord.MessageID]*tview.TextView
+	// itemByID caches unselected message list items.
+	itemByID map[discord.MessageID]list.Item
 	// imagePreviewByID caches rendered inline image previews per message.
 	imagePreviewByID  map[discord.MessageID][]tview.Line
 	imagePreviewTried map[discord.MessageID]bool
+	kittyPreviewByID  map[discord.MessageID]*kittyPreview
+	kittyEnabled      bool
 
 	attachmentsPicker *attachmentsPicker
 
@@ -89,8 +91,10 @@ type messagesListRow struct {
 }
 
 const (
-	inlinePreviewWidth    = 48
-	inlinePreviewHeight   = 14
+	inlinePreviewWidth    = 64
+	inlinePreviewHeight   = 18
+	inlinePreviewMaxRows  = 30
+	inlinePreviewCellAR   = 0.5
 	inlinePreviewMaxBytes = 8 << 20
 	inlinePreviewTimeout  = 3 * time.Second
 )
@@ -101,9 +105,11 @@ func newMessagesList(cfg *config.Config, chat *Model) *messagesList {
 		cfg:               cfg,
 		chat:              chat,
 		renderer:          markdown.NewRenderer(cfg),
-		itemByID:          make(map[discord.MessageID]*tview.TextView),
+		itemByID:          make(map[discord.MessageID]list.Item),
 		imagePreviewByID:  make(map[discord.MessageID][]tview.Line),
 		imagePreviewTried: make(map[discord.MessageID]bool),
+		kittyPreviewByID:  make(map[discord.MessageID]*kittyPreview),
+		kittyEnabled:      isKittyTerminal(),
 	}
 	ml.attachmentsPicker = newAttachmentsPicker(cfg, chat)
 
@@ -127,12 +133,14 @@ func newMessagesList(cfg *config.Config, chat *Model) *messagesList {
 }
 
 func (ml *messagesList) reset() {
+	ml.releaseAllKittyPreviews()
 	ml.messages = nil
 	ml.rows = nil
 	ml.rowsDirty = false
 	clear(ml.itemByID)
 	clear(ml.imagePreviewByID)
 	clear(ml.imagePreviewTried)
+	clear(ml.kittyPreviewByID)
 	ml.
 		Clear().
 		SetBuilder(ml.buildItem).
@@ -149,6 +157,7 @@ func (ml *messagesList) setTitle(channel discord.Channel) {
 }
 
 func (ml *messagesList) setMessages(messages []discord.Message) {
+	ml.releaseAllKittyPreviews()
 	ml.messages = slices.Clone(messages)
 	slices.Reverse(ml.messages)
 	ml.invalidateRows()
@@ -157,15 +166,14 @@ func (ml *messagesList) setMessages(messages []discord.Message) {
 	clear(ml.itemByID)
 	clear(ml.imagePreviewByID)
 	clear(ml.imagePreviewTried)
+	clear(ml.kittyPreviewByID)
 }
 
 func (ml *messagesList) addMessage(message discord.Message) {
 	ml.messages = append(ml.messages, message)
 	ml.invalidateRows()
 	// Defensive invalidation for ID reuse/edits delivered out-of-order.
-	delete(ml.itemByID, message.ID)
-	delete(ml.imagePreviewByID, message.ID)
-	delete(ml.imagePreviewTried, message.ID)
+	ml.evictMessageCaches(message.ID)
 }
 
 func (ml *messagesList) setMessage(index int, message discord.Message) {
@@ -174,9 +182,7 @@ func (ml *messagesList) setMessage(index int, message discord.Message) {
 	}
 
 	ml.messages[index] = message
-	delete(ml.itemByID, message.ID)
-	delete(ml.imagePreviewByID, message.ID)
-	delete(ml.imagePreviewTried, message.ID)
+	ml.evictMessageCaches(message.ID)
 	ml.invalidateRows()
 }
 
@@ -185,11 +191,37 @@ func (ml *messagesList) deleteMessage(index int) {
 		return
 	}
 
-	delete(ml.itemByID, ml.messages[index].ID)
-	delete(ml.imagePreviewByID, ml.messages[index].ID)
-	delete(ml.imagePreviewTried, ml.messages[index].ID)
+	ml.evictMessageCaches(ml.messages[index].ID)
 	ml.messages = append(ml.messages[:index], ml.messages[index+1:]...)
 	ml.invalidateRows()
+}
+
+func (ml *messagesList) evictMessageCaches(messageID discord.MessageID) {
+	delete(ml.itemByID, messageID)
+	delete(ml.imagePreviewByID, messageID)
+	delete(ml.imagePreviewTried, messageID)
+	if preview, ok := ml.kittyPreviewByID[messageID]; ok {
+		if ml.kittyEnabled {
+			kittyDeleteImageByID(preview.id)
+		}
+		delete(ml.kittyPreviewByID, messageID)
+	}
+}
+
+func (ml *messagesList) releaseAllKittyPreviews() {
+	if !ml.kittyEnabled {
+		return
+	}
+	for _, preview := range ml.kittyPreviewByID {
+		kittyDeleteImageByID(preview.id)
+	}
+}
+
+func (ml *messagesList) Draw(screen tcell.Screen) {
+	if ml.kittyEnabled {
+		kittyDeleteAllPlacements()
+	}
+	ml.Model.Draw(screen)
 }
 
 func (ml *messagesList) clearSelection() {
@@ -209,34 +241,33 @@ func (ml *messagesList) buildItem(index int, cursor int) list.Item {
 	}
 
 	message := ml.messages[row.messageIndex]
+	messageStyle := ml.cfg.Theme.MessagesList.MessageStyle.Style
 	if index == cursor {
-		return tview.NewTextView().
-			SetWrap(true).
-			SetWordWrap(true).
-			SetLines(ml.buildMessageLines(message, ml.cfg.Theme.MessagesList.SelectedMessageStyle.Style))
+		messageStyle = ml.cfg.Theme.MessagesList.SelectedMessageStyle.Style
+	}
+	textLines := ml.renderMessage(message, messageStyle)
+	preview := ml.inlineImagePreview(message)
+	previewStartRow := -1
+	if len(preview) > 0 {
+		previewStartRow = len(textLines) + 1
+		textLines = append(textLines, tview.Line{})
+		textLines = append(textLines, preview...)
+	}
+	overlay := ml.kittyPreviewByID[message.ID]
+	if !ml.kittyEnabled {
+		overlay = nil
+	}
+
+	if index == cursor {
+		return newMessageListItem(textLines, overlay, previewStartRow)
 	}
 
 	item, ok := ml.itemByID[message.ID]
 	if !ok {
-		item = tview.NewTextView().
-			SetWrap(true).
-			SetWordWrap(true).
-			SetLines(ml.buildMessageLines(message, ml.cfg.Theme.MessagesList.MessageStyle.Style))
+		item = newMessageListItem(textLines, overlay, previewStartRow)
 		ml.itemByID[message.ID] = item
 	}
 	return item
-}
-
-func (ml *messagesList) buildMessageLines(message discord.Message, baseStyle tcell.Style) []tview.Line {
-	lines := ml.renderMessage(message, baseStyle)
-	preview := ml.inlineImagePreview(message)
-	if len(preview) == 0 {
-		return lines
-	}
-
-	lines = append(lines, tview.Line{})
-	lines = append(lines, preview...)
-	return lines
 }
 
 func (ml *messagesList) renderMessage(message discord.Message, baseStyle tcell.Style) []tview.Line {
@@ -935,9 +966,7 @@ func (ml *messagesList) Update(msg tview.Msg) tview.Cmd {
 
 		// Defensive invalidation if Discord returns overlapping windows.
 		for _, message := range msg.Older {
-			delete(ml.itemByID, message.ID)
-			delete(ml.imagePreviewByID, message.ID)
-			delete(ml.imagePreviewTried, message.ID)
+			ml.evictMessageCaches(message.ID)
 		}
 		ml.messages = slices.Concat(msg.Older, ml.messages)
 		ml.invalidateRows()
@@ -1251,7 +1280,7 @@ func (ml *messagesList) inlineImagePreview(message discord.Message) []tview.Line
 		return nil
 	}
 
-	preview, err := ml.fetchInlineImagePreview(urls[0])
+	preview, kittyPreview, err := ml.fetchInlineImagePreview(urls[0])
 	if err != nil {
 		slog.Debug("failed to build inline image preview", "message_id", message.ID, "url", urls[0], "err", err)
 		return nil
@@ -1261,24 +1290,27 @@ func (ml *messagesList) inlineImagePreview(message discord.Message) []tview.Line
 	}
 
 	ml.imagePreviewByID[message.ID] = preview
+	if kittyPreview != nil {
+		ml.kittyPreviewByID[message.ID] = kittyPreview
+	}
 	return preview
 }
 
-func (ml *messagesList) fetchInlineImagePreview(rawURL string) ([]tview.Line, error) {
+func (ml *messagesList) fetchInlineImagePreview(rawURL string) ([]tview.Line, *kittyPreview, error) {
 	client := http.Client{Timeout: inlinePreviewTimeout}
 	resp, err := client.Get(rawURL)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, errors.New("unexpected image preview status")
+		return nil, nil, errors.New("unexpected image preview status")
 	}
 
 	img, _, err := image.Decode(io.LimitReader(resp.Body, inlinePreviewMaxBytes))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	width := inlinePreviewWidth
@@ -1286,15 +1318,33 @@ func (ml *messagesList) fetchInlineImagePreview(rawURL string) ([]tview.Line, er
 		width = min(width, innerWidth)
 	}
 	if width <= 0 {
-		return nil, nil
+		return nil, nil, nil
+	}
+
+	bounds := img.Bounds()
+	rows := inlinePreviewHeight
+	if bounds.Dx() > 0 && bounds.Dy() > 0 {
+		rows = int(float64(width) * float64(bounds.Dy()) * inlinePreviewCellAR / float64(bounds.Dx()))
+		rows = min(max(rows, 6), inlinePreviewMaxRows)
+	}
+
+	if ml.kittyEnabled {
+		kitty, err := newKittyPreview(img, width, rows)
+		if err == nil {
+			lines := make([]tview.Line, rows)
+			for i := range lines {
+				lines[i] = tview.Line{tview.NewSegment(" ", tcell.StyleDefault)}
+			}
+			return lines, kitty, nil
+		}
 	}
 
 	renderer := imageview.NewImage().
 		SetImage(img).
 		SetDithering(imageview.DitheringFloydSteinberg).
 		SetColors(imageview.TrueColor).
-		SetSize(inlinePreviewHeight, width)
-	return renderer.RenderLines(width, inlinePreviewHeight), nil
+		SetSize(rows, width)
+	return renderer.RenderLines(width, rows), nil, nil
 }
 
 func (ml *messagesList) showAttachmentsList(urls []string, attachments []discord.Attachment) tview.Cmd {
