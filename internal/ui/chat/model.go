@@ -96,6 +96,7 @@ func NewModel(app *tview.Application, cfg *config.Config, token string) *Model {
 	session := session.NewCustom(id, http.NewClient(token), handler.New())
 	state := state.NewFromSession(session, defaultstore.New())
 	m.state = ningen.FromState(state)
+	m.state.DontWaitForReady = true
 
 	m.events = make(chan gateway.Event)
 	m.state.AddHandler(m.events)
