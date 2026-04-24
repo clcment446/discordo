@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/ayn2op/tview"
-	"github.com/gdamore/tcell/v3"
 )
 
 // Types of dithering applied to images.
@@ -78,18 +77,6 @@ type pixel struct {
 	element rune // The block element.
 }
 
-// Image implements a widget that displays one image. The original image
-// (specified with [Image.SetImage]) is resized according to the specified size
-// (see [Image.SetSize]), using the specified number of colors (see
-// [Image.SetColors]), while applying dithering if necessary (see
-// [Image.SetDithering]).
-//
-// Images are approximated by graphical characters in the terminal. The
-// resolution is therefore limited by the number and type of characters that can
-// be drawn in the terminal and the colors available in the terminal. The
-// quality of the final image also depends on the terminal's font and spacing
-// settings, none of which are under the control of this package. Results may
-// vary.
 type Image struct {
 	*tview.Box
 
@@ -138,12 +125,6 @@ type Image struct {
 	// this form item.
 	finished func(tcell.Key)
 }
-
-// NewImage returns a new [Image] widget with an empty image (use
-// [Image.SetImage] to specify the image to be displayed). The image will use
-// the widget's entire available space. The default dithering algorithm is set
-// to Floyd-Steinberg dithering. The terminal's cell aspect ratio defaults to
-// 0.5.
 
 func NewImage() *Image {
 	i := &Image{

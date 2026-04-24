@@ -7,6 +7,7 @@ go 1.26.0
 // replace github.com/diamondburned/arikawa/v3 => ../arikawa
 
 require (
+	github.com/BourgeoisBear/rasterm v1.1.2
 	github.com/BurntSushi/toml v1.6.0
 	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/andybalholm/brotli v1.2.1

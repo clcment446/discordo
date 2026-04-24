@@ -26,6 +26,8 @@ import (
 	"github.com/ayn2op/discordo/internal/consts"
 	"github.com/ayn2op/discordo/internal/markdown"
 	"github.com/ayn2op/discordo/internal/ui"
+	rasterm "github.com/BourgeoisBear/rasterm"
+
 	"github.com/ayn2op/discordo/internal/ui/imageview"
 	"github.com/ayn2op/tview"
 	"github.com/ayn2op/tview/help"
@@ -109,7 +111,7 @@ func newMessagesList(cfg *config.Config, chat *Model) *messagesList {
 		imagePreviewByID:  make(map[discord.MessageID][]tview.Line),
 		imagePreviewTried: make(map[discord.MessageID]bool),
 		kittyPreviewByID:  make(map[discord.MessageID]*kittyPreview),
-		kittyEnabled:      isKittyTerminal(),
+		kittyEnabled:      rasterm.IsKittyCapable(),
 	}
 	ml.attachmentsPicker = newAttachmentsPicker(cfg, chat)
 

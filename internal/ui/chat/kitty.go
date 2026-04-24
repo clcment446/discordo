@@ -11,16 +11,17 @@ import (
 	"sync"
 	"sync/atomic"
 
+	rasterm "github.com/BourgeoisBear/rasterm"
+
 	"github.com/ayn2op/discordo/internal/consts"
 	"github.com/ayn2op/tview"
-	"github.com/gdamore/tcell/v3"
 )
 
 type kittyPreview struct {
-	id       uint64
-	pathB64  string
-	cols     int
-	rows     int
+	id      uint64
+	pathB64 string
+	cols    int
+	rows    int
 
 	loadOnce sync.Once
 	loadErr  error
@@ -104,24 +105,16 @@ func (i *messageListItem) Draw(screen tcell.Screen) {
 	i.kittyPreview.drawAt(startX, startY, cols, rows)
 }
 
-func isKittyTerminal() bool {
-	if os.Getenv("KITTY_WINDOW_ID") != "" {
-		return true
-	}
-	term := strings.ToLower(os.Getenv("TERM"))
-	return strings.Contains(term, "kitty")
-}
-
 func kittyDeleteAllPlacements() {
-	// Lowercase 'a' deletes placements while keeping loaded images in kitty memory.
-	kittyWrite("\x1b_Ga=d,d=a,q=2\x1b\\")
+	kittyWrite(rasterm.KITTY_IMG_HDR + "a=d,d=a,q=2;" + rasterm.KITTY_IMG_FTR)
 }
 
 func kittyDeleteImageByID(id uint64) {
 	if id == 0 {
 		return
 	}
-	kittyWrite(fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=2\x1b\\", id))
+	opts := rasterm.KittyImgOpts{ImageId: uint32(id)}
+	kittyWrite(opts.ToHeader("a=d", "d=i", "q=2") + rasterm.KITTY_IMG_FTR)
 }
 
 func newKittyPreview(img image.Image, cols, rows int) (*kittyPreview, error) {
@@ -159,10 +152,17 @@ func (p *kittyPreview) drawAt(x, y, cols, rows int) {
 	row := max(y+1, 1)
 	col := max(x+1, 1)
 
+	opts := rasterm.KittyImgOpts{
+		ImageId: uint32(p.id),
+		DstCols: uint32(cols),
+		DstRows: uint32(rows),
+	}
+
 	var b strings.Builder
 	b.WriteString("\x1b[s") // save cursor
 	b.WriteString(fmt.Sprintf("\x1b[%d;%dH", row, col))
-	b.WriteString(fmt.Sprintf("\x1b_Ga=p,i=%d,c=%d,r=%d,q=2\x1b\\", p.id, cols, rows))
+	b.WriteString(opts.ToHeader("a=p", "q=2"))
+	b.WriteString(rasterm.KITTY_IMG_FTR)
 	b.WriteString("\x1b[u") // restore cursor
 	kittyWrite(b.String())
 }
@@ -172,7 +172,8 @@ func (p *kittyPreview) ensureLoaded() error {
 		if p == nil || p.pathB64 == "" {
 			return
 		}
-		kittyWrite(fmt.Sprintf("\x1b_Ga=L,i=%d,f=100,t=f,q=2;%s\x1b\\", p.id, p.pathB64))
+		opts := rasterm.KittyImgOpts{ImageId: uint32(p.id)}
+		kittyWrite(opts.ToHeader("a=L", "f=100", "t=f", "q=2") + p.pathB64 + rasterm.KITTY_IMG_FTR)
 	})
 
 	return p.loadErr
